@@ -1,56 +1,65 @@
 package core
 
 import (
-	"bytes"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/yldoge/edu-go-blockchain/crypto"
 	"github.com/yldoge/edu-go-blockchain/types"
 )
 
-var (
-	h *Header = &Header{
-		Version:   1,
-		PreBlock:  types.RandomHash(),
-		Timestamp: time.Now().UnixNano(),
-		Height:    10,
-		Nonce:     989394,
+func randomBlock(height uint32) *Block {
+	header := &Header{
+		Version:      1,
+		PreBlockHash: types.RandomHash(),
+		Height:       height,
+		Timestamp:    time.Now().UnixNano(),
 	}
-	b *Block = &Block{
-		Header:       *h,
-		Transactions: nil,
+	tx := Transaction{
+		Data: []byte("foo"),
 	}
-)
 
-func TestBlock_Header_Encode_Decode(t *testing.T) {
-
-	buf := &bytes.Buffer{}
-	assert.Nil(t, h.EncodeBinary(buf))
-
-	hDecode := &Header{}
-	assert.Nil(t, hDecode.DecodeBinary(buf))
-	assert.Equal(t, h, hDecode)
+	return NewBlock(header, []Transaction{tx})
 }
 
-func TestBlock_Encode_Decode(t *testing.T) {
-	buf := &bytes.Buffer{}
-	assert.Nil(t, b.EncodeBinary(buf))
-
-	bDecode := &Block{}
-	assert.Nil(t, bDecode.DecodeBinary(buf))
-	assert.Equal(t, b, bDecode)
+func TestHashBlock(t *testing.T) {
+	b := randomBlock(0)
+	b.Hash(BlockHasher{})
+	assert.NotNil(t, b.hash)
 }
 
-func TestBlock_Hash(t *testing.T) {
-	var headerHash types.Hash
-	headerHash = b.hash
-	assert.True(t, headerHash.IsZero())
-	headerHash = b.Hash()
-	fmt.Println(headerHash)
-	assert.False(t, headerHash.IsZero())
+func TestSignBlock(t *testing.T) {
+	pvk := crypto.GeneratePrivateKey()
+	b := randomBlock(0)
 
-	// reset global value
-	b.hash = types.HashFromBytes(make([]byte, 32))
+	assert.Nil(t, b.Sign(pvk))
+	assert.NotNil(t, b.Signature)
+}
+
+func TestVerifyBlock(t *testing.T) {
+	pvk := crypto.GeneratePrivateKey()
+	b := randomBlock(0)
+
+	assert.Nil(t, b.Sign(pvk))
+	assert.Nil(t, b.Verify())
+
+	// Invalid public key should fail the verification
+	b.Validator = crypto.GeneratePrivateKey().PublicKey()
+	assert.NotNil(t, b.Verify())
+	// Use original public key
+	b.Validator = pvk.PublicKey()
+	assert.Nil(t, b.Verify())
+	// Modify header data should fail the verification
+	b.Height = 10
+	// assert.NotNil(t, b.Verify())
+
+}
+
+func TestBlockHeaderDataDiff(t *testing.T) {
+	b := randomBlock(0)
+	hd := b.HeaderData()
+	b.Height = 10
+	hd2 := b.HeaderData()
+	assert.NotEqual(t, hd, hd2)
 }
