@@ -10,14 +10,21 @@ import (
 	"github.com/yldoge/edu-go-blockchain/types"
 )
 
-func TestBlock_Header_Encode_Decode(t *testing.T) {
-	h := &Header{
+var (
+	h *Header = &Header{
 		Version:   1,
 		PreBlock:  types.RandomHash(),
 		Timestamp: time.Now().UnixNano(),
 		Height:    10,
 		Nonce:     989394,
 	}
+	b *Block = &Block{
+		Header:       *h,
+		Transactions: nil,
+	}
+)
+
+func TestBlock_Header_Encode_Decode(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	assert.Nil(t, h.EncodeBinary(buf))
@@ -28,17 +35,6 @@ func TestBlock_Header_Encode_Decode(t *testing.T) {
 }
 
 func TestBlock_Encode_Decode(t *testing.T) {
-	b := &Block{
-		Header: Header{
-			Version:   1,
-			PreBlock:  types.RandomHash(),
-			Timestamp: time.Now().UnixNano(),
-			Height:    10,
-			Nonce:     989394,
-		},
-		Transactions: nil,
-	}
-
 	buf := &bytes.Buffer{}
 	assert.Nil(t, b.EncodeBinary(buf))
 
@@ -48,18 +44,13 @@ func TestBlock_Encode_Decode(t *testing.T) {
 }
 
 func TestBlock_Hash(t *testing.T) {
-	b := &Block{
-		Header: Header{
-			Version:   1,
-			PreBlock:  types.RandomHash(),
-			Timestamp: time.Now().UnixNano(),
-			Height:    10,
-			Nonce:     989394,
-		},
-		Transactions: nil,
-	}
+	var headerHash types.Hash
+	headerHash = b.hash
+	assert.True(t, headerHash.IsZero())
+	headerHash = b.Hash()
+	fmt.Println(headerHash)
+	assert.False(t, headerHash.IsZero())
 
-	h := b.Hash()
-	fmt.Println(h)
-	assert.False(t, h.IsZero())
+	// reset global value
+	b.hash = types.HashFromBytes(make([]byte, 32))
 }
