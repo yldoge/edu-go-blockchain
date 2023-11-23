@@ -27,12 +27,21 @@ func TestTransactionVerify(t *testing.T) {
 	assert.Nil(t, tx.Verify())
 
 	// invalid public key
-	tx.PublicKey = crypto.GeneratePrivateKey().PublicKey()
+	tx.From = crypto.GeneratePrivateKey().PublicKey()
 	assert.NotNil(t, tx.Verify())
 
 	// change data
-	tx.PublicKey = pvk.PublicKey()
+	tx.From = pvk.PublicKey()
 	assert.Nil(t, tx.Verify())
 	tx.Data = []byte("fooo")
 	assert.NotNil(t, tx.Verify())
+}
+
+func randomTxWithSignature(t *testing.T) *Transaction {
+	pvk := crypto.GeneratePrivateKey()
+	tx := &Transaction{
+		Data: []byte("foo"),
+	}
+	assert.Nil(t, tx.Sign(pvk))
+	return tx
 }
