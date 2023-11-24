@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yldoge/edu-go-blockchain/crypto"
+	"github.com/yldoge/edu-go-blockchain/types"
 )
 
 type Transaction struct {
@@ -11,6 +12,22 @@ type Transaction struct {
 
 	From      crypto.PublicKey
 	Signature *crypto.Signature
+
+	// cached version of the tx data hash
+	hash types.Hash
+}
+
+func NewTransaction(data []byte) *Transaction {
+	return &Transaction{
+		Data: data,
+	}
+}
+
+func (tx *Transaction) Hash(hasher Hasher[*Transaction]) types.Hash {
+	if tx.hash.IsZero() {
+		tx.hash = hasher.Hash(tx)
+	}
+	return tx.hash
 }
 
 func (tx *Transaction) Sign(pvk crypto.PrivateKey) error {
