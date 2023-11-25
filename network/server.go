@@ -3,9 +3,10 @@ package network
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-kit/log"
 	"github.com/yldoge/edu-go-blockchain/core"
 	"github.com/yldoge/edu-go-blockchain/crypto"
 )
@@ -15,6 +16,8 @@ var (
 )
 
 type ServerOpts struct {
+	ID     string
+	Logger log.Logger
 	RPCDecodeFunc
 	RPCProcessor
 	Transports []Transport
@@ -37,6 +40,10 @@ func NewServer(opts ServerOpts) *Server {
 	if opts.RPCDecodeFunc == nil {
 		opts.RPCDecodeFunc = DefaultRPCDecodeFunc
 	}
+	if opts.Logger == nil {
+		opts.Logger = log.NewLogfmtLogger(os.Stderr)
+		opts.Logger = log.With(opts.Logger, "ID")
+	}
 
 	s := &Server{
 		ServerOpts:  opts,
@@ -51,12 +58,26 @@ func NewServer(opts ServerOpts) *Server {
 		opts.RPCProcessor = s
 	}
 
+	if s.isValidator {
+		go s.validatorLoop()
+	}
+
 	return s
+}
+
+func (s *Server) validatorLoop() {
+	ticker := time.NewTicker(s.BlockTime)
+
+	s.Logger.Log("msg", "Starting validator loop", "blockTime", s.BlockTime)
+
+	for {
+		<-ticker.C
+		s.createNewBlock()
+	}
 }
 
 func (s *Server) Start() {
 	s.initTransports()
-	ticker := time.NewTicker(s.BlockTime)
 
 free:
 	for {
@@ -64,20 +85,18 @@ free:
 		case rpc := <-s.rpcCh:
 			msg, err := s.RPCDecodeFunc(rpc)
 			if err != nil {
-				log.Error(err)
+				s.Logger.Log("error", err)
 			}
 
 			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
-				log.Error(err)
+				s.Logger.Log("error", err)
 			}
 		case <-s.quitCh:
 			break free
-		case <-ticker.C:
-			if s.isValidator {
-				s.createNetwork()
-			}
 		}
 	}
+
+	s.Logger.Log("msg", "Server is shutting down")
 }
 
 func (s *Server) broadcast(payload []byte) error {
@@ -102,9 +121,10 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
 	if s.memPool.Has(hash) {
-		log.WithFields(log.Fields{
-			"hash": hash,
-		}).Info("transaction already in mempool")
+		s.Logger.Log(
+			"msg", "transaction already in mempool",
+			"hash", hash,
+		)
 		return nil
 	}
 
@@ -114,10 +134,11 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	tx.SetFirstSeen(time.Now().UnixNano())
 
-	log.WithFields(log.Fields{
-		"hash":       hash,
-		"mempoolLen": s.memPool.Len(),
-	}).Info("adding new tx to the mempool")
+	s.Logger.Log(
+		"msg", "adding new tx to mempool",
+		"hash", hash,
+		"mempoolLen", s.memPool.Len(),
+	)
 
 	go s.broadcastTx(tx)
 
@@ -135,7 +156,7 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 	return s.broadcast(msg.Bytes())
 }
 
-func (s *Server) createNetwork() error {
+func (s *Server) createNewBlock() error {
 	fmt.Println("creating a new block")
 	return nil
 }
