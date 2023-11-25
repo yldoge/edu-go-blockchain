@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -14,6 +15,8 @@ var (
 )
 
 type ServerOpts struct {
+	RPCDecodeFunc
+	RPCProcessor
 	Transports []Transport
 	BlockTime  time.Duration
 	PrivateKey *crypto.PrivateKey
@@ -21,7 +24,6 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
-	blockTime   time.Duration
 	memPool     *TxPool
 	isValidator bool
 	rpcCh       chan RPC
@@ -32,26 +34,42 @@ func NewServer(opts ServerOpts) *Server {
 	if opts.BlockTime == 0 {
 		opts.BlockTime = defaultBlockTime
 	}
+	if opts.RPCDecodeFunc == nil {
+		opts.RPCDecodeFunc = DefaultRPCDecodeFunc
+	}
 
-	return &Server{
+	s := &Server{
 		ServerOpts:  opts,
-		blockTime:   opts.BlockTime,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),
 		quitCh:      make(chan struct{}, 1),
 	}
+
+	// server itself is the default rpc processor
+	if opts.RPCProcessor == nil {
+		opts.RPCProcessor = s
+	}
+
+	return s
 }
 
 func (s *Server) Start() {
 	s.initTransports()
-	ticker := time.NewTicker(s.blockTime)
+	ticker := time.NewTicker(s.BlockTime)
 
 free:
 	for {
 		select {
 		case rpc := <-s.rpcCh:
-			fmt.Printf("%+v\n", rpc)
+			msg, err := s.RPCDecodeFunc(rpc)
+			if err != nil {
+				log.Error(err)
+			}
+
+			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
+				log.Error(err)
+			}
 		case <-s.quitCh:
 			break free
 		case <-ticker.C:
@@ -62,7 +80,25 @@ free:
 	}
 }
 
-func (s *Server) handleTransaction(tx *core.Transaction) error {
+func (s *Server) broadcast(payload []byte) error {
+	for _, tr := range s.Transports {
+		if err := tr.Broadcast(payload); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Implementing RPCProcessor and routing to correct process func
+func (s *Server) ProcessMessage(decMsg *DecodedMessage) error {
+	switch t := decMsg.Data.(type) {
+	case *core.Transaction:
+		return s.processTransaction(t)
+	}
+	return nil
+}
+
+func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
 	if s.memPool.Has(hash) {
@@ -76,11 +112,27 @@ func (s *Server) handleTransaction(tx *core.Transaction) error {
 		return err
 	}
 
+	tx.SetFirstSeen(time.Now().UnixNano())
+
 	log.WithFields(log.Fields{
-		"hash": hash,
+		"hash":       hash,
+		"mempoolLen": s.memPool.Len(),
 	}).Info("adding new tx to the mempool")
 
+	go s.broadcastTx(tx)
+
 	return s.memPool.Add(tx)
+}
+
+func (s *Server) broadcastTx(tx *core.Transaction) error {
+	buf := &bytes.Buffer{}
+	if err := tx.Encode(core.NewGobTxEncoder(buf)); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeTx, buf.Bytes())
+
+	return s.broadcast(msg.Bytes())
 }
 
 func (s *Server) createNetwork() error {
