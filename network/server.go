@@ -2,13 +2,13 @@ package network
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/yldoge/edu-go-blockchain/core"
 	"github.com/yldoge/edu-go-blockchain/crypto"
+	"github.com/yldoge/edu-go-blockchain/types"
 )
 
 var (
@@ -28,12 +28,13 @@ type ServerOpts struct {
 type Server struct {
 	ServerOpts
 	memPool     *TxPool
+	chain       *core.Blockchain
 	isValidator bool
 	rpcCh       chan RPC
 	quitCh      chan struct{}
 }
 
-func NewServer(opts ServerOpts) *Server {
+func NewServer(opts ServerOpts) (*Server, error) {
 	if opts.BlockTime == 0 {
 		opts.BlockTime = defaultBlockTime
 	}
@@ -42,11 +43,16 @@ func NewServer(opts ServerOpts) *Server {
 	}
 	if opts.Logger == nil {
 		opts.Logger = log.NewLogfmtLogger(os.Stderr)
-		opts.Logger = log.With(opts.Logger, "ID")
+		opts.Logger = log.With(opts.Logger, "ID", opts.ID)
 	}
 
+	chain, err := core.NewBlockchain(opts.Logger, genesisBlock())
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		ServerOpts:  opts,
+		chain:       chain,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),
@@ -55,14 +61,14 @@ func NewServer(opts ServerOpts) *Server {
 
 	// server itself is the default rpc processor
 	if opts.RPCProcessor == nil {
-		opts.RPCProcessor = s
+		s.RPCProcessor = s
 	}
 
 	if s.isValidator {
 		go s.validatorLoop()
 	}
 
-	return s
+	return s, nil
 }
 
 func (s *Server) validatorLoop() {
@@ -87,7 +93,6 @@ free:
 			if err != nil {
 				s.Logger.Log("error", err)
 			}
-
 			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
 				s.Logger.Log("error", err)
 			}
@@ -156,11 +161,6 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 	return s.broadcast(msg.Bytes())
 }
 
-func (s *Server) createNewBlock() error {
-	fmt.Println("creating a new block")
-	return nil
-}
-
 func (s *Server) initTransports() {
 	for _, tr := range s.Transports {
 		go func(tr Transport) {
@@ -169,4 +169,42 @@ func (s *Server) initTransports() {
 			}
 		}(tr)
 	}
+}
+
+func (s *Server) createNewBlock() error {
+	currentHeader, err := s.chain.GetHeader(s.chain.Height())
+	if err != nil {
+		return err
+	}
+
+	// TODO - not include all transactions into the new block
+	txs := s.memPool.Transactions()
+
+	block, err := core.NewBlockFromPrevHeader(currentHeader, txs)
+	if err != nil {
+		return err
+	}
+
+	if err := block.Sign(*s.PrivateKey); err != nil {
+		return err
+	}
+
+	if err := s.chain.AddBlock(block); err != nil {
+		return err
+	}
+
+	s.memPool.Flush()
+
+	return nil
+}
+
+func genesisBlock() *core.Block {
+	header := &core.Header{
+		Version:   1,
+		DataHash:  types.Hash{},
+		Height:    0,
+		Timestamp: time.Now().UnixNano(),
+	}
+	b, _ := core.NewBlock(header, nil)
+	return b
 }

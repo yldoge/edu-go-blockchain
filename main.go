@@ -35,7 +35,10 @@ func main() {
 		Transports: []network.Transport{trl},
 	}
 
-	s := network.NewServer(ops)
+	s, err := network.NewServer(ops)
+	if err != nil {
+		panic(err)
+	}
 	s.Start()
 }
 

@@ -9,36 +9,15 @@ import (
 	"github.com/yldoge/edu-go-blockchain/types"
 )
 
-func randomBlock(height uint32, prevBlockHash types.Hash) *Block {
-	header := &Header{
-		Version:      1,
-		PreBlockHash: prevBlockHash,
-		Height:       height,
-		Timestamp:    time.Now().UnixNano(),
-	}
-
-	return NewBlock(header, []Transaction{})
-}
-
-func randomBlockWithSignature(t *testing.T, h uint32, prevBlockHash types.Hash) *Block {
-	pvk := crypto.GeneratePrivateKey()
-	b := randomBlock(h, prevBlockHash)
-	tx := randomTxWithSignature(t)
-	b.AddTransaction(tx)
-	assert.Nil(t, b.Sign(pvk))
-
-	return b
-}
-
 func TestHashBlock(t *testing.T) {
-	b := randomBlock(0, types.Hash{})
+	b := randomBlock(t, 0, types.Hash{})
 	b.Hash(BlockHasher{})
 	assert.NotNil(t, b.hash)
 }
 
 func TestSignBlock(t *testing.T) {
 	pvk := crypto.GeneratePrivateKey()
-	b := randomBlock(0, types.Hash{})
+	b := randomBlock(t, 0, types.Hash{})
 
 	assert.Nil(t, b.Sign(pvk))
 	assert.NotNil(t, b.Signature)
@@ -46,7 +25,7 @@ func TestSignBlock(t *testing.T) {
 
 func TestVerifyBlock(t *testing.T) {
 	pvk := crypto.GeneratePrivateKey()
-	b := randomBlock(0, types.Hash{})
+	b := randomBlock(t, 0, types.Hash{})
 
 	assert.Nil(t, b.Sign(pvk))
 	assert.Nil(t, b.Verify())
@@ -61,4 +40,25 @@ func TestVerifyBlock(t *testing.T) {
 	b.Height = 10
 	// assert.NotNil(t, b.Verify())
 
+}
+
+func randomBlock(t *testing.T, height uint32, prevBlockHash types.Hash) *Block {
+	pvk := crypto.GeneratePrivateKey()
+	tx := randomTxWithSignature(t)
+
+	header := &Header{
+		Version:      1,
+		PreBlockHash: prevBlockHash,
+		Height:       height,
+		Timestamp:    time.Now().UnixNano(),
+	}
+
+	b, err := NewBlock(header, []*Transaction{tx})
+	assert.Nil(t, err)
+	dataHash, err := CalculateDataHash(b.Transactions)
+	assert.Nil(t, err)
+	b.Header.DataHash = dataHash
+	assert.Nil(t, b.Sign(pvk))
+
+	return b
 }
