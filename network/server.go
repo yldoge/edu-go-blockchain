@@ -53,7 +53,7 @@ func NewServer(opts ServerOpts) (*Server, error) {
 	s := &Server{
 		ServerOpts:  opts,
 		chain:       chain,
-		memPool:     NewTxPool(),
+		memPool:     NewTxPool(1000),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),
 		quitCh:      make(chan struct{}, 1),
@@ -125,7 +125,7 @@ func (s *Server) ProcessMessage(decMsg *DecodedMessage) error {
 func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
-	if s.memPool.Has(hash) {
+	if s.memPool.Contains(hash) {
 		s.Logger.Log(
 			"msg", "transaction already in mempool",
 			"hash", hash,
@@ -142,12 +142,13 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	s.Logger.Log(
 		"msg", "adding new tx to mempool",
 		"hash", hash,
-		"mempoolLen", s.memPool.Len(),
+		"mempoolLen", s.memPool.PendingCount(),
 	)
 
 	go s.broadcastTx(tx)
+	s.memPool.Add(tx)
 
-	return s.memPool.Add(tx)
+	return nil
 }
 
 func (s *Server) broadcastTx(tx *core.Transaction) error {
@@ -178,7 +179,7 @@ func (s *Server) createNewBlock() error {
 	}
 
 	// TODO - not include all transactions into the new block
-	txs := s.memPool.Transactions()
+	txs := s.memPool.Pending()
 
 	block, err := core.NewBlockFromPrevHeader(currentHeader, txs)
 	if err != nil {
@@ -193,7 +194,7 @@ func (s *Server) createNewBlock() error {
 		return err
 	}
 
-	s.memPool.Flush()
+	s.memPool.ClearPending()
 
 	return nil
 }

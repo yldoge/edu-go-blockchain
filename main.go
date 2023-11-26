@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
@@ -13,15 +14,22 @@ import (
 )
 
 func main() {
-	trl := network.NewLocalTransport("LOCAL")
-	trr := network.NewLocalTransport("REMOTE")
+	trLocal := network.NewLocalTransport("LOCAL")
+	trRemote0 := network.NewLocalTransport("REMOTE_0")
+	trRemote1 := network.NewLocalTransport("REMOTE_1")
+	trRemote2 := network.NewLocalTransport("REMOTE_2")
 
-	trl.Connect(trr)
-	trr.Connect(trl)
+	trLocal.Connect(trRemote0)
+	trRemote0.Connect(trLocal)
+
+	trRemote0.Connect(trRemote1)
+	trRemote1.Connect(trRemote2)
+
+	initRemoteServers([]network.Transport{trRemote0, trRemote1, trRemote2})
 
 	go func() {
 		for {
-			if err := sendTransaction(trr, trl.Addr()); err != nil {
+			if err := sendTransaction(trRemote0, trLocal.Addr()); err != nil {
 				log.Error(err)
 			}
 			time.Sleep(1 * time.Second)
@@ -29,17 +37,31 @@ func main() {
 	}()
 
 	pvk := crypto.GeneratePrivateKey()
-	ops := network.ServerOpts{
-		PrivateKey: &pvk,
-		ID:         "LOCAL",
-		Transports: []network.Transport{trl},
-	}
+	localServer := makeServer("LOCAL", trLocal, &pvk)
+	localServer.Start()
+}
 
-	s, err := network.NewServer(ops)
+func initRemoteServers(trs []network.Transport) {
+	for i, tr := range trs {
+		s := makeServer(
+			fmt.Sprintf("REMOTE_%d", i),
+			tr, nil,
+		)
+		go s.Start()
+	}
+}
+
+func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network.Server {
+	opts := network.ServerOpts{
+		PrivateKey: pk,
+		ID:         id,
+		Transports: []network.Transport{tr},
+	}
+	s, err := network.NewServer(opts)
 	if err != nil {
 		panic(err)
 	}
-	s.Start()
+	return s
 }
 
 // tmp function to test functionaliy
