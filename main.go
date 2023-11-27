@@ -65,7 +65,7 @@ func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network
 // tmp function to test functionaliy
 func sendTransaction(tr network.Transport, to network.NetAdddr) error {
 	pvk := crypto.GeneratePrivateKey()
-	data := []byte{0x02, 0x0a, 0x02, 0x0a, 0x0b}
+	data := []byte{0x03, 0x0a, 0x46, 0x0c, 0x4f, 0x0c, 0x4f, 0x0c, 0x0d, 0x05, 0x0a, 0x0f}
 	tx := core.NewTransaction(data)
 	tx.Sign(pvk)
 	buf := &bytes.Buffer{}
