@@ -26,7 +26,8 @@ func NewStack(size int) *Stack {
 }
 
 func (s *Stack) Push(v any) {
-	s.data[s.sp] = v
+	// s.data[s.sp] = v
+	s.data = append([]any{v}, s.data...)
 	s.sp++
 }
 
