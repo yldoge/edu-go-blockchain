@@ -118,7 +118,19 @@ func (s *Server) ProcessMessage(decMsg *DecodedMessage) error {
 	switch t := decMsg.Data.(type) {
 	case *core.Transaction:
 		return s.processTransaction(t)
+	case *core.Block:
+		return s.processBlock(t)
 	}
+	return nil
+}
+
+func (s *Server) processBlock(b *core.Block) error {
+	if err := s.chain.AddBlock(b); err != nil {
+		return err
+	}
+
+	go s.broadcastBlock(b)
+
 	return nil
 }
 
@@ -126,10 +138,10 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
 	if s.memPool.Contains(hash) {
-		s.Logger.Log(
-			"msg", "transaction already in mempool",
-			"hash", hash,
-		)
+		// s.Logger.Log(
+		// 	"msg", "transaction already in mempool",
+		// 	"hash", hash,
+		// )
 		return nil
 	}
 
@@ -139,16 +151,27 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	tx.SetFirstSeen(time.Now().UnixNano())
 
-	s.Logger.Log(
-		"msg", "adding new tx to mempool",
-		"hash", hash,
-		"mempoolLen", s.memPool.PendingCount(),
-	)
+	// s.Logger.Log(
+	// 	"msg", "adding new tx to mempool",
+	// 	"hash", hash,
+	// 	"mempoolLen", s.memPool.PendingCount(),
+	// )
 
 	go s.broadcastTx(tx)
 	s.memPool.Add(tx)
 
 	return nil
+}
+
+func (s *Server) broadcastBlock(b *core.Block) error {
+	buf := &bytes.Buffer{}
+	if err := b.Encode(core.NewGobBlockEncoder(buf)); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeBlock, buf.Bytes())
+
+	return s.broadcast(msg.Bytes())
 }
 
 func (s *Server) broadcastTx(tx *core.Transaction) error {
@@ -181,20 +204,22 @@ func (s *Server) createNewBlock() error {
 	// TODO - not include all transactions into the new block
 	txs := s.memPool.Pending()
 
-	block, err := core.NewBlockFromPrevHeader(currentHeader, txs)
+	b, err := core.NewBlockFromPrevHeader(currentHeader, txs)
 	if err != nil {
 		return err
 	}
 
-	if err := block.Sign(*s.PrivateKey); err != nil {
+	if err := b.Sign(*s.PrivateKey); err != nil {
 		return err
 	}
 
-	if err := s.chain.AddBlock(block); err != nil {
+	if err := s.chain.AddBlock(b); err != nil {
 		return err
 	}
 
 	s.memPool.ClearPending()
+
+	go s.broadcastBlock(b)
 
 	return nil
 }
@@ -204,7 +229,7 @@ func genesisBlock() *core.Block {
 		Version:   1,
 		DataHash:  types.Hash{},
 		Height:    0,
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: 000000,
 	}
 	b, _ := core.NewBlock(header, nil)
 	return b
