@@ -11,6 +11,7 @@ const (
 	InstrPack     Instruction = 0x0d
 	InstrSub      Instruction = 0x0e
 	InstrStore    Instruction = 0x0f
+	InstrGet      Instruction = 0xae
 )
 
 type Stack struct {
@@ -72,6 +73,14 @@ func (vm *VM) Run() error {
 
 func (vm *VM) Exec(instr Instruction) error {
 	switch instr {
+	case InstrGet:
+		key := vm.stack.Pop().([]byte)
+		value, err := vm.contractState.Get(key)
+		if err != nil {
+			return err
+		}
+		vm.stack.Push(value)
+
 	case InstrStore:
 		var (
 			key             = vm.stack.Pop().([]byte)

@@ -65,10 +65,8 @@ func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network
 // tmp function to test functionaliy
 func sendTransaction(tr network.Transport, to network.NetAdddr) error {
 	pvk := crypto.GeneratePrivateKey()
-	data1 := []byte{0x02, 0x0a, 0x03, 0x0a, 0x0b, 0x4f, 0x0c, 0x4f, 0x0c, 0x46, 0x0c, 0x03, 0x0a, 0x0d, 0x0f}
-	data2 := []byte{0x02, 0x0a, 0x03, 0x0a, 0x0e, 0x4f, 0x0c, 0x4f, 0x0c, 0x47, 0x0c, 0x03, 0x0a, 0x0d, 0x0f}
-	data := append(data1, data2...)
-	tx := core.NewTransaction(data)
+
+	tx := core.NewTransaction(contract())
 	tx.Sign(pvk)
 	buf := &bytes.Buffer{}
 	if err := tx.Encode(core.NewGobTxEncoder(buf)); err != nil {
@@ -78,4 +76,12 @@ func sendTransaction(tr network.Transport, to network.NetAdddr) error {
 	msg := network.NewMessage(network.MessageTypeTx, buf.Bytes())
 
 	return tr.SendMessage(to, msg.Bytes())
+}
+
+func contract() []byte {
+	data := []byte{0x02, 0x0a, 0x03, 0x0a, 0x0b, 0x4f, 0x0c, 0x4f, 0x0c, 0x46, 0x0c, 0x03, 0x0a, 0x0d, 0x0f}
+	pushFoo := []byte{0x4f, 0x0c, 0x4f, 0x0c, 0x46, 0x0c, 0x03, 0x0a, 0x0d, 0xae}
+	data = append(data, pushFoo...)
+
+	return data
 }

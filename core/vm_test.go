@@ -79,3 +79,17 @@ func TestVM(t *testing.T) {
 	value = deserializeInt64(valueBytes)
 	assert.Equal(t, value, int64(1))
 }
+
+func TestContractStoreGet(t *testing.T) {
+	contractState := NewState()
+	contractState.Put([]byte("FOO"), serializeInt64(int64(1)))
+	pushFoo := []byte{0x4f, 0x0c, 0x4f, 0x0c, 0x46, 0x0c, 0x03, 0x0a, 0x0d}
+	data := append(pushFoo, 0xae)
+	vm := NewVM(data, contractState)
+	assert.Nil(t, vm.Run())
+	fmt.Printf("%+v\n", vm.stack.data)
+
+	v := vm.stack.Pop().([]byte)
+	vDeserilized := deserializeInt64(v)
+	assert.Equal(t, int64(1), vDeserilized)
+}
