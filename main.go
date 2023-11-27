@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
-	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -67,7 +65,7 @@ func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network
 // tmp function to test functionaliy
 func sendTransaction(tr network.Transport, to network.NetAdddr) error {
 	pvk := crypto.GeneratePrivateKey()
-	data := []byte(strconv.FormatInt(rand.Int63n(1000), 10))
+	data := []byte{0x02, 0x0a, 0x02, 0x0a, 0x0b}
 	tx := core.NewTransaction(data)
 	tx.Sign(pvk)
 	buf := &bytes.Buffer{}
